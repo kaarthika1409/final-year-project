@@ -26,22 +26,28 @@ def get_activity_multiplier(activity_level: str) -> float:
     return multipliers.get(activity_level.lower(), 1.2)
 
 
-def get_goal_adjustment(goal: str) -> float:
+def get_goal_adjustment(goal: str, delta_kcal: float = 500.0) -> float:
     adjustments = {
-        "lose": -500.0,
+        "lose": -abs(delta_kcal),
         "maintain": 0.0,
-        "gain": 500.0,
+        "gain": abs(delta_kcal),
     }
     return adjustments.get(goal.lower(), 0.0)
 
 
 def calculate_daily_calorie_target(
-    weight_kg: float, height_cm: float, age: int, gender: str, activity_level: str, goal: str
+    weight_kg: float,
+    height_cm: float,
+    age: int,
+    gender: str,
+    activity_level: str,
+    goal: str,
+    goal_delta_kcal: float = 500.0,
 ) -> dict:
     bmr = calculate_bmr(weight_kg, height_cm, age, gender)
     multiplier = get_activity_multiplier(activity_level)
     tdee = round(bmr * multiplier, 1)
-    adjustment = get_goal_adjustment(goal)
+    adjustment = get_goal_adjustment(goal, delta_kcal=goal_delta_kcal)
     target_calories = max(1200.0, round(tdee + adjustment, 1))  # Ensure a safe minimum threshold
 
     # Calculate recommended macro split

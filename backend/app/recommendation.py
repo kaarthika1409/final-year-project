@@ -22,11 +22,24 @@ def get_dietary_recommendations(
     # Query all nutrition reference items
     all_foods = db.query(NutritionReference).all()
     scored_items: List[tuple[float, NutritionReference, str]] = []
-
     for food in all_foods:
-        # 1. Allergy check
+        # 1. Allergy check (hard filter - strict exclusion)
         food_allergens = [a.strip().lower() for a in (food.allergens or "").split(",") if a.strip()]
-        if any(allergen in food_allergens for allergen in user_allergies):
+        food_name_lower = food.food_name.lower()
+        
+        has_allergen = False
+        for allergen in user_allergies:
+            if allergen in food_allergens or allergen in food_name_lower:
+                has_allergen = True
+                break
+            if allergen in ["nuts", "peanuts", "tree nuts"] and any(n in food_name_lower for n in ["almond", "peanut", "walnut", "cashew", "hazelnut", "pecan", "nut"]):
+                has_allergen = True
+                break
+            if allergen == "dairy" and any(d in food_name_lower for d in ["cheese", "milk", "yogurt", "butter", "cream"]):
+                has_allergen = True
+                break
+        
+        if has_allergen:
             continue
 
         # 2. Preference check

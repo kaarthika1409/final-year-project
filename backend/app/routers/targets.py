@@ -8,7 +8,7 @@ from backend.app.security import get_current_user
 from backend.app.budget_engine import calculate_daily_calorie_target
 from backend.app.redistribution import recalculate_and_redistribute_daily_target
 
-router = APIRouter(prefix="/api/targets", tags=["Calorie Targets & Adaptive Redistribution"])
+router = APIRouter(tags=["Calorie Targets & Adaptive Redistribution"])
 
 
 def get_or_create_daily_target(user: User, db: Session, target_date: str = None) -> DailyTarget:
@@ -122,13 +122,16 @@ def format_target_response(target: DailyTarget) -> DailyTargetResponse:
     )
 
 
-@router.get("/today", response_model=DailyTargetResponse)
+@router.get("/api/targets/today", response_model=DailyTargetResponse)
+@router.get("/dashboard/today", response_model=DailyTargetResponse)
+@router.get("/targets/today", response_model=DailyTargetResponse)
 def get_today_target(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     target = get_or_create_daily_target(current_user, db)
     return format_target_response(target)
 
 
-@router.post("/recalculate", response_model=DailyTargetResponse)
+@router.post("/api/targets/recalculate", response_model=DailyTargetResponse)
+@router.post("/targets/recalculate", response_model=DailyTargetResponse)
 def force_recalculate_target(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     target = get_or_create_daily_target(current_user, db)
     return format_target_response(target)

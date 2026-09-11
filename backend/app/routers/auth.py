@@ -1,15 +1,45 @@
+from typing import Optional, Dict
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 from backend.app.database import get_db
-from backend.app.models import User
+from backend.app.models import User, MealSlot
 from backend.app.schemas import UserSignup, UserLogin, UserResponse, UserUpdate, Token
 from backend.app.security import get_password_hash, verify_password, create_access_token, get_current_user
 from backend.app.budget_engine import calculate_daily_calorie_target, calculate_bmi
 
-router = APIRouter(prefix="/api/auth", tags=["User Auth & Profile"])
+router = APIRouter(tags=["User Auth & Calorie Budget"])
 
 
-@router.post("/signup", response_model=Token, status_code=status.HTTP_201_CREATED)
+class CalorieBudgetCalculateRequest(BaseModel):
+    weight_kg: float = Field(..., gt=0)
+    height_cm: float = Field(..., gt=0)
+    age: int = Field(..., ge=1, le=120)
+    gender: str = Field(..., pattern="^(male|female|other)$")
+    activity_level: str = Field(..., pattern="^(sedentary|light|moderate|active|very_active)$")
+    goal: str = Field(..., pattern="^(lose|maintain|gain)$")
+    goal_delta_kcal: Optional[float] = 500.0
+
+
+def create_default_meal_slots(user_id: int, db: Session):
+    defaults = [
+        {"name": "breakfast", "default_weight_pct": 25.0},
+        {"name": "lunch", "default_weight_pct": 35.0},
+        {"name": "snack", "default_weight_pct": 10.0},
+        {"name": "dinner", "default_weight_pct": 30.0},
+    ]
+    for slot_def in defaults:
+        slot = MealSlot(
+            user_id=user_id,
+            name=slot_def["name"],
+            default_weight_pct=slot_def["default_weight_pct"],
+        )
+        db.add(slot)
+    db.commit()
+
+
+@router.post("/api/auth/signup", response_model=Token, status_code=status.HTTP_201_CREATED)
+@router.post("/auth/signup", response_model=Token, status_code=status.HTTP_201_CREATED)
 def signup(user_in: UserSignup, db: Session = Depends(get_db)):
     existing_user = db.query(User).filter(User.email == user_in.email).first()
     if existing_user:
@@ -35,9 +65,10 @@ def signup(user_in: UserSignup, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_user)
 
+    create_default_meal_slots(new_user.id, db)
+
     access_token = create_access_token(data={"sub": new_user.email})
 
-    # Prepare response profile info
     budget = calculate_daily_calorie_target(
         new_user.weight, new_user.height, new_user.age, new_user.gender, new_user.activity_level, new_user.goal
     )
@@ -64,7 +95,8 @@ def signup(user_in: UserSignup, db: Session = Depends(get_db)):
     return Token(access_token=access_token, token_type="bearer", user=user_resp)
 
 
-@router.post("/login", response_model=Token)
+@router.post("/api/auth/login", response_model=Token)
+@router.post("/auth/login", response_model=Token)
 def login(user_in: UserLogin, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == user_in.email).first()
     if not user or not verify_password(user_in.password, user.password_hash):
@@ -101,7 +133,8 @@ def login(user_in: UserLogin, db: Session = Depends(get_db)):
     return Token(access_token=access_token, token_type="bearer", user=user_resp)
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/api/auth/me", response_model=UserResponse)
+@router.get("/auth/me", response_model=UserResponse)
 def get_me(current_user: User = Depends(get_current_user)):
     budget = calculate_daily_calorie_target(
         current_user.weight, current_user.height, current_user.age, current_user.gender, current_user.activity_level, current_user.goal
@@ -127,7 +160,7 @@ def get_me(current_user: User = Depends(get_current_user)):
     )
 
 
-@router.put("/profile", response_model=UserResponse)
+@router.put("/api/auth/profile", response_model=UserResponse)
 def update_profile(
     user_update: UserUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
@@ -160,3 +193,34 @@ def update_profile(
         bmi=bmi_info["bmi"],
         bmi_category=bmi_info["category"],
     )
+
+
+@router.post("/calorie-budget/calculate")
+@router.post("/api/calorie-budget/calculate")
+def calculate_calorie_budget(req: CalorieBudgetCalculateRequest):
+    budget = calculate_daily_calorie_target(
+        weight_kg=req.weight_kg,
+        height_cm=req.height_cm,
+        age=req.age,
+        gender=req.gender,
+        activity_level=req.activity_level,
+        goal=req.goal,
+        goal_delta_kcal=req.goal_delta_kcal or 500.0,
+    )
+    # Default meal slot weights: breakfast 25%, lunch 35%, snack 10%, dinner 30%
+    target_cals = budget["target_calories"]
+    slot_targets = {
+        "breakfast": round(target_cals * 0.25, 1),
+        "lunch": round(target_cals * 0.35, 1),
+        "snack": round(target_cals * 0.10, 1),
+        "dinner": round(target_cals * 0.30, 1),
+    }
+
+    return {
+        "bmr": budget["bmr"],
+        "tdee": budget["tdee"],
+        "target_calories": target_cals,
+        "slot_targets": slot_targets,
+        "sum_slot_targets": round(sum(slot_targets.values()), 1),
+    }
+

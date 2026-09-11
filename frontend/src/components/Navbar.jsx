@@ -1,5 +1,5 @@
 import React from "react";
-import { Activity, LayoutDashboard, User, BarChart3, LogOut } from "lucide-react";
+import { Activity, LayoutDashboard, User, BarChart3, LogOut, Brain } from "lucide-react";
 
 export default function Navbar({ activeTab, setActiveTab, user, onLogout }) {
   return (
@@ -27,6 +27,17 @@ export default function Navbar({ activeTab, setActiveTab, user, onLogout }) {
             }`}
           >
             <LayoutDashboard className="w-4 h-4" /> Dashboard
+          </button>
+
+          <button
+            onClick={() => setActiveTab("diagnosis")}
+            className={`px-4 py-2 rounded-lg font-medium text-sm transition-all flex items-center gap-2 ${
+              activeTab === "diagnosis"
+                ? "bg-gradient-to-r from-emerald-500 to-cyan-500 text-white shadow-md"
+                : "text-gray-400 hover:text-white"
+            }`}
+          >
+            <Brain className="w-4 h-4" /> Diet Diagnosis
           </button>
 
           <button

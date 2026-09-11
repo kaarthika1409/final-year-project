@@ -5,12 +5,13 @@ import Signup from "./pages/Signup";
 import Dashboard from "./pages/Dashboard";
 import Profile from "./pages/Profile";
 import Analytics from "./pages/Analytics";
+import DiagnosisPage from "./pages/DiagnosisPage";
 import { api } from "./api";
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [authView, setAuthView] = useState("login"); // "login" | "signup"
-  const [activeTab, setActiveTab] = useState("dashboard"); // "dashboard" | "analytics" | "profile"
+  const [activeTab, setActiveTab] = useState("dashboard"); // "dashboard" | "diagnosis" | "analytics" | "profile"
   const [initializing, setInitializing] = useState(true);
 
   useEffect(() => {
@@ -68,6 +69,7 @@ export default function App() {
 
       <main className="max-w-7xl mx-auto px-6 pt-8">
         {activeTab === "dashboard" && <Dashboard user={user} />}
+        {activeTab === "diagnosis" && <DiagnosisPage />}
         {activeTab === "analytics" && <Analytics user={user} />}
         {activeTab === "profile" && (
           <Profile user={user} onProfileUpdated={(updated) => setUser(updated)} />

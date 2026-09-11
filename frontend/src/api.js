@@ -123,4 +123,26 @@ export const api = {
     if (!res.ok) throw new Error(json.detail || "Failed to fetch accuracy report");
     return json;
   },
+
+  // --- Diet ML Prediction ---
+  async predictDiet(data) {
+    const res = await fetch(`${API_BASE}/predict`, {
+      method: "POST",
+      headers: { ...getAuthHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.detail || "Prediction failed");
+    return json;
+  },
+
+  async getDishRecommendations(diet = "Balanced", allergies = "", limit = 20) {
+    const params = new URLSearchParams({ diet, allergies, limit });
+    const res = await fetch(`${API_BASE}/predict/diet-recommendations?${params}`, {
+      headers: getAuthHeader(),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.detail || "Failed to fetch dish recommendations");
+    return json;
+  },
 };

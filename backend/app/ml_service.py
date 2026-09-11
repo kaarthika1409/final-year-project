@@ -1,16 +1,59 @@
 import io
+import os
 import base64
 import logging
-from typing import Tuple, Dict, Any, Optional
+from typing import Tuple, Dict, Any, Optional, List
 from PIL import Image
 import torch
 import torchvision.transforms as transforms
 import torchvision.models as models
-from thefuzz import process, fuzz
+from rapidfuzz import process, fuzz
 from sqlalchemy.orm import Session
 from backend.app.models import NutritionReference
+import numpy as np
+import joblib
 
 logger = logging.getLogger(__name__)
+
+# ─────────────────────────────────────────────────────────
+# Diet Recommendation ML Model — loaded ONCE at import time
+# ─────────────────────────────────────────────────────────
+_BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_DIET_MODEL_PATH = os.path.join(_BACKEND_DIR, "ml_models", "diet_model.pkl")
+_DIET_ENCODER_PATH = os.path.join(_BACKEND_DIR, "data", "diet_label_encoder.pkl")
+_DIET_METADATA_PATH = os.path.join(_BACKEND_DIR, "ml_models", "model_metadata.pkl")
+
+_diet_model = None
+_diet_label_encoder = None
+_diet_metadata = None
+
+
+def _load_diet_model():
+    """Lazily load the trained diet model, label encoder, and metadata."""
+    global _diet_model, _diet_label_encoder, _diet_metadata
+
+    if _diet_model is None:
+        if not os.path.exists(_DIET_MODEL_PATH):
+            raise FileNotFoundError(
+                f"Diet model not found at '{_DIET_MODEL_PATH}'. "
+                "Run: python ml_models/train_model.py"
+            )
+        _diet_model = joblib.load(_DIET_MODEL_PATH)
+        logger.info(f"Diet model loaded from: {_DIET_MODEL_PATH}")
+
+    if _diet_label_encoder is None:
+        if not os.path.exists(_DIET_ENCODER_PATH):
+            raise FileNotFoundError(
+                f"Diet label encoder not found at '{_DIET_ENCODER_PATH}'."
+            )
+        _diet_label_encoder = joblib.load(_DIET_ENCODER_PATH)
+        logger.info(f"Diet label encoder loaded from: {_DIET_ENCODER_PATH}")
+
+    if _diet_metadata is None and os.path.exists(_DIET_METADATA_PATH):
+        _diet_metadata = joblib.load(_DIET_METADATA_PATH)
+        logger.info(f"Diet model metadata loaded from: {_DIET_METADATA_PATH}")
+
+    return _diet_model, _diet_label_encoder, _diet_metadata
 
 # List of Food-101 / common nutritional dataset categories for classifier mapping
 FOOD_CATEGORIES = [
@@ -102,11 +145,13 @@ def fuzzy_match_nutrition_db(predicted_label: str, db: Session) -> Tuple[Optiona
     # Format human-readable string from label e.g., "grilled_salmon" -> "grilled salmon"
     clean_query = predicted_label.replace("_", " ")
 
-    # Extract best match using thefuzz token_sort_ratio
-    best_match, score = process.extractOne(clean_query, names, scorer=fuzz.token_sort_ratio)
-
-    matched_item = food_names_map.get(best_match)
-    return matched_item, best_match, float(score)
+    # Extract best match using rapidfuzz token_sort_ratio
+    match_res = process.extractOne(clean_query, names, scorer=fuzz.token_sort_ratio)
+    if match_res:
+        best_match, score = match_res[0], match_res[1]
+        matched_item = food_names_map.get(best_match)
+        return matched_item, best_match, float(score)
+    return None, predicted_label, 0.0
 
 
 def predict_food_from_image(
@@ -165,13 +210,72 @@ def predict_food_from_image(
         fat = round(9.0 * portion_factor, 1)
         final_name = label_title
 
+    uncertain_flag = bool(confidence < 0.5)
+
     return {
         "detected_food": final_name,
         "confidence": confidence,
+        "uncertain": uncertain_flag,
         "portion_g": portion_g,
         "calories": calories,
         "protein": protein,
         "carbs": carbs,
         "fat": fat,
         "match_source": f"ML Model + Fuzzy Match ({matched_name}, score: {match_score:.0f}%)" if db_item else "ML Fallback",
+    }
+
+
+# ─────────────────────────────────────────────────────────
+# Diet Recommendation Prediction
+# ─────────────────────────────────────────────────────────
+
+def predict_diet(input_data: List[float]) -> Dict[str, Any]:
+    """
+    Predict the recommended diet class from pre-processed patient features.
+
+    Parameters
+    ----------
+    input_data : list of float
+        A 1-D list of 33 pre-processed feature values (already scaled,
+        one-hot encoded) matching the same column order used during training.
+
+    Returns
+    -------
+    dict with keys:
+        predicted_class       : int   — encoded class index
+        diet_recommendation   : str   — human-readable diet name
+        confidence            : float — probability of the predicted class
+                                        (None if model lacks predict_proba)
+        all_class_probabilities : dict[str, float] — per-class probabilities
+                                        (empty dict if not available)
+        model_name            : str   — name of the underlying model
+    """
+    model, le, metadata = _load_diet_model()
+
+    # Convert input to 2-D numpy array (1 sample × N features)
+    X = np.array(input_data, dtype=float).reshape(1, -1)
+
+    predicted_encoded = int(model.predict(X)[0])
+    diet_name = le.inverse_transform([predicted_encoded])[0]
+
+    confidence = None
+    all_probs: Dict[str, float] = {}
+
+    if hasattr(model, "predict_proba"):
+        proba = model.predict_proba(X)[0]  # shape: (n_classes,)
+        confidence = round(float(np.max(proba)), 4)
+        class_names: List[str] = list(le.classes_)
+        all_probs = {
+            class_names[i]: round(float(proba[i]), 4)
+            for i in range(len(class_names))
+        }
+
+    model_name = metadata["model_name"] if metadata else type(model).__name__
+
+    return {
+        "predicted_class": predicted_encoded,
+        "diet_recommendation": str(diet_name),
+        "confidence": confidence,
+        "all_class_probabilities": all_probs,
+        "model_name": model_name,
     }

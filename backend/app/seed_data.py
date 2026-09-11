@@ -1,75 +1,173 @@
+"""
+seed_data.py
+============
+Seeds the nutrition_reference database table from final_dish_dataset.csv
+(4,768 real dishes). The seeding only runs when the table is empty.
+
+The mock 44 hard-coded food items have been replaced with the actual dataset.
+"""
+
+import os
+import logging
+import pandas as pd
 from sqlalchemy.orm import Session
 from backend.app.models import NutritionReference
 
-SEED_NUTRITION_ITEMS = [
-    {"food_name": "Apple", "calories": 52.0, "protein": 0.3, "carbs": 13.8, "fat": 0.2, "serving_size_g": 150.0, "category": "Fruit", "allergens": ""},
-    {"food_name": "Banana", "calories": 89.0, "protein": 1.1, "carbs": 22.8, "fat": 0.3, "serving_size_g": 120.0, "category": "Fruit", "allergens": ""},
-    {"food_name": "Orange", "calories": 47.0, "protein": 0.9, "carbs": 11.8, "fat": 0.1, "serving_size_g": 140.0, "category": "Fruit", "allergens": ""},
-    {"food_name": "Blueberries", "calories": 57.0, "protein": 0.7, "carbs": 14.5, "fat": 0.3, "serving_size_g": 100.0, "category": "Fruit", "allergens": ""},
-    {"food_name": "Avocado", "calories": 160.0, "protein": 2.0, "carbs": 8.5, "fat": 14.7, "serving_size_g": 150.0, "category": "Fruit", "allergens": ""},
-    
-    {"food_name": "Grilled Chicken Breast", "calories": 165.0, "protein": 31.0, "carbs": 0.0, "fat": 3.6, "serving_size_g": 150.0, "category": "Poultry", "allergens": ""},
-    {"food_name": "Turkey Breast", "calories": 135.0, "protein": 30.0, "carbs": 0.0, "fat": 1.0, "serving_size_g": 150.0, "category": "Poultry", "allergens": ""},
-    {"food_name": "Grilled Salmon", "calories": 206.0, "protein": 22.0, "carbs": 0.0, "fat": 12.3, "serving_size_g": 150.0, "category": "Seafood", "allergens": "fish"},
-    {"food_name": "Tuna Steak", "calories": 130.0, "protein": 28.0, "carbs": 0.0, "fat": 1.2, "serving_size_g": 150.0, "category": "Seafood", "allergens": "fish"},
-    {"food_name": "Shrimp", "calories": 99.0, "protein": 24.0, "carbs": 0.2, "fat": 0.3, "serving_size_g": 120.0, "category": "Seafood", "allergens": "shellfish"},
-    {"food_name": "Beef Steak (Ribeye)", "calories": 271.0, "protein": 25.0, "carbs": 0.0, "fat": 19.0, "serving_size_g": 200.0, "category": "Meat", "allergens": ""},
-    {"food_name": "Boiled Eggs", "calories": 155.0, "protein": 12.6, "carbs": 1.1, "fat": 10.6, "serving_size_g": 100.0, "category": "Eggs", "allergens": "eggs"},
-    {"food_name": "Tofu (Firm)", "calories": 76.0, "protein": 8.0, "carbs": 1.9, "fat": 4.8, "serving_size_g": 150.0, "category": "Vegan Protein", "allergens": "soy"},
-    
-    {"food_name": "Brown Rice", "calories": 111.0, "protein": 2.6, "carbs": 23.0, "fat": 0.9, "serving_size_g": 150.0, "category": "Grains", "allergens": ""},
-    {"food_name": "White Rice", "calories": 130.0, "protein": 2.7, "carbs": 28.0, "fat": 0.3, "serving_size_g": 150.0, "category": "Grains", "allergens": ""},
-    {"food_name": "Oatmeal (Cooked)", "calories": 71.0, "protein": 2.5, "carbs": 12.0, "fat": 1.5, "serving_size_g": 200.0, "category": "Grains", "allergens": "gluten"},
-    {"food_name": "Quinoa", "calories": 120.0, "protein": 4.4, "carbs": 21.3, "fat": 1.9, "serving_size_g": 150.0, "category": "Grains", "allergens": ""},
-    {"food_name": "Sweet Potato (Baked)", "calories": 90.0, "protein": 2.0, "carbs": 20.7, "fat": 0.1, "serving_size_g": 150.0, "category": "Vegetables", "allergens": ""},
-    {"food_name": "Whole Wheat Bread", "calories": 247.0, "protein": 13.0, "carbs": 41.0, "fat": 3.4, "serving_size_g": 70.0, "category": "Grains", "allergens": "gluten"},
-    {"food_name": "Whole Wheat Pasta", "calories": 124.0, "protein": 5.3, "carbs": 25.0, "fat": 0.5, "serving_size_g": 180.0, "category": "Grains", "allergens": "gluten"},
+logger = logging.getLogger(__name__)
 
-    {"food_name": "Greek Yogurt (Non-fat)", "calories": 59.0, "protein": 10.0, "carbs": 3.6, "fat": 0.4, "serving_size_g": 170.0, "category": "Dairy", "allergens": "dairy"},
-    {"food_name": "Cottage Cheese", "calories": 98.0, "protein": 11.0, "carbs": 3.4, "fat": 4.3, "serving_size_g": 150.0, "category": "Dairy", "allergens": "dairy"},
-    {"food_name": "Cheddar Cheese", "calories": 403.0, "protein": 24.9, "carbs": 1.3, "fat": 33.1, "serving_size_g": 30.0, "category": "Dairy", "allergens": "dairy"},
-    {"food_name": "Almonds", "calories": 579.0, "protein": 21.2, "carbs": 21.6, "fat": 49.9, "serving_size_g": 30.0, "category": "Nuts", "allergens": "nuts"},
-    {"food_name": "Peanut Butter", "calories": 588.0, "protein": 25.0, "carbs": 20.0, "fat": 50.0, "serving_size_g": 32.0, "category": "Nuts", "allergens": "nuts,peanuts"},
-    {"food_name": "Walnuts", "calories": 654.0, "protein": 15.2, "carbs": 13.7, "fat": 65.2, "serving_size_g": 30.0, "category": "Nuts", "allergens": "nuts"},
+# ---------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------
+_BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_DISH_CSV = os.path.join(_BACKEND_DIR, "data", "final_dish_dataset.csv")
 
-    {"food_name": "Broccoli (Steamed)", "calories": 35.0, "protein": 2.4, "carbs": 7.2, "fat": 0.4, "serving_size_g": 150.0, "category": "Vegetables", "allergens": ""},
-    {"food_name": "Spinach (Fresh)", "calories": 23.0, "protein": 2.9, "carbs": 3.6, "fat": 0.4, "serving_size_g": 100.0, "category": "Vegetables", "allergens": ""},
-    {"food_name": "Caesar Salad", "calories": 140.0, "protein": 3.5, "carbs": 6.0, "fat": 11.5, "serving_size_g": 200.0, "category": "Salad", "allergens": "dairy,gluten,eggs"},
-    {"food_name": "Greek Salad", "calories": 110.0, "protein": 3.0, "carbs": 5.5, "fat": 8.5, "serving_size_g": 200.0, "category": "Salad", "allergens": "dairy"},
-    {"food_name": "Garden Salad", "calories": 30.0, "protein": 1.5, "carbs": 5.0, "fat": 0.5, "serving_size_g": 150.0, "category": "Salad", "allergens": ""},
-    {"food_name": "Hummus", "calories": 166.0, "protein": 7.9, "carbs": 14.3, "fat": 9.6, "serving_size_g": 50.0, "category": "Vegan", "allergens": "sesame"},
+# ---------------------------------------------------------------
+# Allergen keyword detection from ingredient name
+# ---------------------------------------------------------------
+_ALLERGEN_MAP = {
+    "nuts":      ["almond", "walnut", "cashew", "hazelnut", "pecan", "pistachio", "macadamia", "nut"],
+    "peanuts":   ["peanut", "groundnut"],
+    "dairy":     ["milk", "cheese", "butter", "cream", "yogurt", "ghee", "whey", "lactose"],
+    "gluten":    ["wheat", "bread", "flour", "pasta", "barley", "rye", "semolina", "noodle"],
+    "eggs":      ["egg"],
+    "shellfish": ["shrimp", "prawn", "crab", "lobster", "crayfish", "scallop", "oyster", "clam"],
+    "fish":      ["salmon", "tuna", "cod", "tilapia", "halibut", "anchov", "sardine", "fish"],
+    "soy":       ["soy", "tofu", "miso", "tempeh", "edamame"],
+    "sesame":    ["sesame", "tahini"],
+}
 
-    {"food_name": "Pizza (Pepperoni Slice)", "calories": 266.0, "protein": 11.0, "carbs": 30.0, "fat": 11.5, "serving_size_g": 110.0, "category": "Dishes", "allergens": "dairy,gluten"},
-    {"food_name": "Cheeseburger", "calories": 303.0, "protein": 15.0, "carbs": 30.0, "fat": 14.0, "serving_size_g": 160.0, "category": "Dishes", "allergens": "dairy,gluten"},
-    {"food_name": "Chicken Wings (4 pcs)", "calories": 290.0, "protein": 23.0, "carbs": 0.0, "fat": 21.0, "serving_size_g": 150.0, "category": "Poultry", "allergens": ""},
-    {"food_name": "Chicken Burrito Bowl", "calories": 160.0, "protein": 12.0, "carbs": 18.0, "fat": 5.0, "serving_size_g": 350.0, "category": "Dishes", "allergens": "dairy"},
-    {"food_name": "Sushi Roll (California)", "calories": 140.0, "protein": 3.5, "carbs": 26.0, "fat": 2.0, "serving_size_g": 180.0, "category": "Seafood", "allergens": "fish,soy"},
-    {"food_name": "Steamed Dumplings (6 pcs)", "calories": 180.0, "protein": 8.0, "carbs": 24.0, "fat": 6.0, "serving_size_g": 150.0, "category": "Dishes", "allergens": "gluten,soy"},
-    {"food_name": "Ramen Noodle Soup", "calories": 110.0, "protein": 4.5, "carbs": 15.0, "fat": 4.0, "serving_size_g": 400.0, "category": "Dishes", "allergens": "gluten,soy,eggs"},
-    {"food_name": "Falafel Wrap", "calories": 190.0, "protein": 6.5, "carbs": 28.0, "fat": 7.0, "serving_size_g": 220.0, "category": "Vegan", "allergens": "gluten,sesame"},
 
-    {"food_name": "Whey Protein Shake", "calories": 120.0, "protein": 24.0, "carbs": 3.0, "fat": 1.5, "serving_size_g": 300.0, "category": "Supplements", "allergens": "dairy"},
-    {"food_name": "Plant-Based Protein Shake", "calories": 130.0, "protein": 22.0, "carbs": 4.0, "fat": 2.5, "serving_size_g": 300.0, "category": "Supplements", "allergens": "soy"},
-    {"food_name": "Dark Chocolate (70%)", "calories": 598.0, "protein": 7.8, "carbs": 45.9, "fat": 42.6, "serving_size_g": 30.0, "category": "Snacks", "allergens": "dairy"},
-    {"food_name": "French Fries", "calories": 312.0, "protein": 3.4, "carbs": 41.0, "fat": 15.0, "serving_size_g": 120.0, "category": "Snacks", "allergens": ""},
-    {"food_name": "Pancakes with Maple Syrup", "calories": 227.0, "protein": 6.0, "carbs": 45.0, "fat": 3.0, "serving_size_g": 150.0, "category": "Breakfast", "allergens": "gluten,eggs,dairy"},
-]
+def _derive_allergens(ingredient_list: str) -> str:
+    """Derive allergens string from comma-joined ingredient names."""
+    ingr_lower = ingredient_list.lower()
+    found = []
+    for allergen, keywords in _ALLERGEN_MAP.items():
+        if any(kw in ingr_lower for kw in keywords):
+            found.append(allergen)
+    return ",".join(found)
+
+
+def _derive_category(top_ingredient: str) -> str:
+    """Map dominant ingredient to a broad food category."""
+    ing = top_ingredient.lower().strip()
+    if any(k in ing for k in ["chicken", "turkey", "duck", "hen"]):
+        return "Poultry"
+    if any(k in ing for k in ["beef", "pork", "lamb", "veal", "bacon", "steak", "meat"]):
+        return "Meat"
+    if any(k in ing for k in ["salmon", "tuna", "cod", "fish", "shrimp", "prawn", "crab", "seafood", "lobster"]):
+        return "Seafood"
+    if any(k in ing for k in ["rice", "pasta", "noodle", "wheat", "bread", "flour", "oat", "grain", "barley"]):
+        return "Grains"
+    if any(k in ing for k in ["milk", "cheese", "yogurt", "cream", "butter", "dairy"]):
+        return "Dairy"
+    if any(k in ing for k in ["egg"]):
+        return "Eggs"
+    if any(k in ing for k in ["tofu", "soy", "tempeh", "bean", "lentil", "legume", "chickpea"]):
+        return "Plant Protein"
+    if any(k in ing for k in ["almond", "walnut", "cashew", "nut", "peanut", "pistachio", "seed"]):
+        return "Nuts & Seeds"
+    if any(k in ing for k in ["apple", "banana", "mango", "berry", "fruit", "grape", "orange", "lemon"]):
+        return "Fruit"
+    if any(k in ing for k in ["spinach", "kale", "broccoli", "carrot", "onion", "potato", "tomato",
+                               "lettuce", "cucumber", "pepper", "celery", "mushroom", "vegetable"]):
+        return "Vegetables"
+    if any(k in ing for k in ["oil", "olive", "coconut", "avocado"]):
+        return "Fats & Oils"
+    return "Mixed Dish"
 
 
 def seed_nutrition_database(db: Session):
-    """Populates nutrition_reference table if empty."""
+    """
+    Populates nutrition_reference table with dishes from final_dish_dataset.csv.
+    Only runs if the table is empty — safe to call on every startup.
+    """
     existing_count = db.query(NutritionReference).count()
-    if existing_count == 0:
-        for item in SEED_NUTRITION_ITEMS:
-            record = NutritionReference(
-                food_name=item["food_name"],
-                calories=item["calories"],
-                protein=item["protein"],
-                carbs=item["carbs"],
-                fat=item["fat"],
-                serving_size_g=item["serving_size_g"],
-                category=item["category"],
-                allergens=item["allergens"],
+    if existing_count > 0:
+        logger.info(f"nutrition_reference already has {existing_count} rows — skipping seed.")
+        return
+
+    if not os.path.exists(_DISH_CSV):
+        logger.warning(f"Dish CSV not found at {_DISH_CSV} — falling back to empty DB.")
+        return
+
+    logger.info(f"Seeding nutrition_reference from {_DISH_CSV} ...")
+
+    try:
+        df = pd.read_csv(_DISH_CSV)
+
+        # Aggregate: one row per dish_id
+        # Ingredients: join all ingr_name values for that dish
+        agg = (
+            df.groupby("dish_id")
+            .agg(
+                ingr_name=("ingr_name", lambda x: ", ".join(x.dropna().astype(str))),
+                total_calories=("total_calories", "first"),
+                total_fat=("total_fat", "first"),
+                total_carbohydrates=("total_carbohydrates", "first"),
+                total_protein=("total_protein", "first"),
+                total_grams=("total_grams", "first"),
+                calories_per_100g=("calories_per_100g", "first"),
+                fat_per_100g=("fat_per_100g", "first"),
+                carbohydrates_per_100g=("carbohydrates_per_100g", "first"),
+                protein_per_100g=("protein_per_100g", "first"),
             )
-            db.add(record)
-        db.commit()
+            .reset_index()
+        )
+
+        # First ingredient as top-level category signal
+        first_ingr = df.groupby("dish_id")["ingr_name"].first().reset_index()
+        first_ingr.columns = ["dish_id", "top_ingredient"]
+        agg = agg.merge(first_ingr, on="dish_id")
+
+        records = []
+        seen_names = set()
+
+        for _, row in agg.iterrows():
+            top_ingr = str(row["top_ingredient"]).strip()
+            ingr_list = str(row["ingr_name"])
+
+            # Human-readable name: "Dish - <top ingredient>"
+            food_name = f"Dish - {top_ingr.title()}"
+
+            # Deduplicate (in case two dishes share the same top ingredient name)
+            if food_name in seen_names:
+                food_name = f"{food_name} ({row['dish_id']})"
+            seen_names.add(food_name)
+
+            allergens = _derive_allergens(ingr_list)
+            category = _derive_category(top_ingr)
+
+            # Use per-100g values for calorie/macro fields (model stores per-100g)
+            cal_100 = row["calories_per_100g"] if pd.notna(row["calories_per_100g"]) and row["calories_per_100g"] > 0 else (
+                (row["total_calories"] / row["total_grams"] * 100) if row["total_grams"] > 0 else 0.0
+            )
+            fat_100 = row["fat_per_100g"] if pd.notna(row["fat_per_100g"]) else 0.0
+            carb_100 = row["carbohydrates_per_100g"] if pd.notna(row["carbohydrates_per_100g"]) else 0.0
+            prot_100 = row["protein_per_100g"] if pd.notna(row["protein_per_100g"]) else 0.0
+            serving = row["total_grams"] if pd.notna(row["total_grams"]) and row["total_grams"] > 0 else 100.0
+
+            records.append(
+                NutritionReference(
+                    food_name=food_name,
+                    calories=round(float(cal_100), 2),
+                    protein=round(float(prot_100), 2),
+                    carbs=round(float(carb_100), 2),
+                    fat=round(float(fat_100), 2),
+                    serving_size_g=round(float(serving), 1),
+                    category=category,
+                    allergens=allergens,
+                    tags=ingr_list[:500],  # Store ingredient list in tags (truncated)
+                )
+            )
+
+        # Batch insert in chunks to avoid memory issues
+        CHUNK = 500
+        for i in range(0, len(records), CHUNK):
+            db.bulk_save_objects(records[i : i + CHUNK])
+            db.commit()
+
+        logger.info(f"Seeded {len(records)} dishes from final_dish_dataset.csv into nutrition_reference.")
+
+    except Exception as e:
+        logger.error(f"Failed to seed nutrition database from CSV: {e}")
+        db.rollback()

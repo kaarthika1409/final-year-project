@@ -93,6 +93,7 @@ class PhotoDetectRequest(BaseModel):
 class PhotoDetectResponse(BaseModel):
     detected_food: str
     confidence: float
+    uncertain: bool = False
     portion_g: float
     calories: float
     protein: float
@@ -163,6 +164,7 @@ class GroupAccuracyResult(BaseModel):
     sample_count: int
     mae: float
     rmse: float
+    mape: float  # Mean Absolute Percentage Error (%)
     avg_actual: float
     avg_predicted: float
 
@@ -171,4 +173,65 @@ class AccuracyReportResponse(BaseModel):
     total_users: int
     overall_mae: float
     overall_rmse: float
+    overall_mape: float  # Mean Absolute Percentage Error (%)
     group_metrics: List[GroupAccuracyResult]
+
+
+# --- Diet ML Prediction Schemas ---
+class PredictRequest(BaseModel):
+    """Patient health features matching clean_patient_dataset.csv columns."""
+    age: int = Field(..., ge=1, le=120)
+    gender: str = Field(..., description="Female or Male")
+    weight_kg: float = Field(..., gt=0)
+    height_cm: float = Field(..., gt=0)
+    bmi: Optional[float] = Field(None, description="Auto-computed if not provided")
+    disease_type: str = Field(..., description="Diabetes, Hypertension, or Obesity")
+    severity: str = Field(..., description="Mild, Moderate, or Severe")
+    physical_activity_level: str = Field(..., description="Active, Moderate, or Sedentary")
+    daily_caloric_intake: float = Field(..., gt=0)
+    cholesterol: float = Field(..., ge=0, description="mg/dL")
+    blood_pressure: float = Field(..., ge=0, description="mmHg systolic")
+    glucose: float = Field(..., ge=0, description="mg/dL")
+    dietary_restrictions: str = Field(..., description="Low_Sodium or Low_Sugar")
+    allergies: str = Field(..., description="Gluten or Peanuts")
+    preferred_cuisine: str = Field(..., description="Chinese, Indian, Italian, or Mexican")
+    weekly_exercise_hours: float = Field(..., ge=0)
+    adherence_to_diet_plan: float = Field(..., ge=0, le=10)
+    dietary_nutrient_imbalance_score: float = Field(..., ge=0)
+
+
+class PredictResponse(BaseModel):
+    diet_recommendation: str
+    confidence: Optional[float] = None
+    all_class_probabilities: Optional[Dict[str, float]] = None
+    model_name: str
+
+
+# --- Dish Recommendation Schemas ---
+class DishRecommendationItem(BaseModel):
+    id: int
+    food_name: str
+    category: str
+    calories_per_serving: float
+    protein_g: float
+    carbs_g: float
+    fat_g: float
+    serving_size_g: float
+    ingredients: str
+    fit_reason: str
+    match_score: float
+
+
+class MealPlan(BaseModel):
+    breakfast: List[DishRecommendationItem]
+    lunch: List[DishRecommendationItem]
+    dinner: List[DishRecommendationItem]
+    snacks: List[DishRecommendationItem]
+
+
+class DishRecommendationResponse(BaseModel):
+    diet_recommendation: str
+    confidence: Optional[float] = None
+    dishes: List[DishRecommendationItem]
+    meal_plan: MealPlan
+    total_dishes_available: int

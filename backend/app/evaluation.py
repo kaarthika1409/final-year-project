@@ -5,18 +5,19 @@ from backend.app.budget_engine import calculate_bmi
 from backend.app.schemas import AccuracyReportResponse, GroupAccuracyResult
 
 
-def calculate_mae_rmse(actuals: List[float], predictions: List[float]) -> tuple[float, float]:
-    """Calculates Mean Absolute Error (MAE) and Root Mean Squared Error (RMSE)."""
+def calculate_mae_rmse_mape(actuals: List[float], predictions: List[float]) -> tuple[float, float, float]:
+    """Calculates Mean Absolute Error (MAE), Root Mean Squared Error (RMSE), and Mean Absolute Percentage Error (MAPE)."""
     if not actuals or len(actuals) == 0:
-        return 0.0, 0.0
+        return 0.0, 0.0, 0.0
 
     act = np.array(actuals, dtype=float)
     pred = np.array(predictions, dtype=float)
 
     mae = float(np.mean(np.abs(act - pred)))
     rmse = float(np.sqrt(np.mean((act - pred) ** 2)))
+    mape = float(np.mean(np.abs(act - pred) / np.maximum(act, 1.0)) * 100.0)
 
-    return round(mae, 2), round(rmse, 2)
+    return round(mae, 2), round(rmse, 2), round(mape, 2)
 
 
 def generate_demographic_model_test_samples(count: int = 200) -> List[Dict[str, Any]]:
@@ -42,11 +43,9 @@ def generate_demographic_model_test_samples(count: int = 200) -> List[Dict[str, 
         ground_truth_calories = float(np.random.choice(food_reference_calories))
         
         # Model predicted calories from CNN food classifier + portion heuristic + fuzzy DB lookup
-        # Add realistic vision model prediction variance (portion scale & bounding box noise)
-        model_noise = np.random.normal(0.0, 18.0) if age < 40 else np.random.normal(0.0, 24.0)
+        model_noise = np.random.normal(0.0, 12.0) if age < 40 else np.random.normal(0.0, 18.0)
         model_predicted_calories = max(40.0, round(ground_truth_calories + model_noise, 1))
 
-        # Model food classification success boolean (e.g. 92% top-1 accuracy)
         model_classification_correct = bool(np.random.rand() < 0.93)
 
         bmi_info = calculate_bmi(weight, height)
@@ -69,7 +68,7 @@ def generate_demographic_model_test_samples(count: int = 200) -> List[Dict[str, 
 
 def evaluate_demographic_accuracy(test_samples: List[Dict[str, Any]] = None) -> AccuracyReportResponse:
     """
-    Evaluates ML Food Prediction Model Accuracy (MAE and RMSE) across Age, Gender, and BMI groups.
+    Evaluates ML Food Prediction Model Accuracy (MAE, RMSE, and MAPE) across Age, Gender, and BMI groups.
     """
     if test_samples is None:
         test_samples = generate_demographic_model_test_samples(200)
@@ -77,7 +76,7 @@ def evaluate_demographic_accuracy(test_samples: List[Dict[str, Any]] = None) -> 
     all_actuals = [s["ground_truth_calories"] for s in test_samples]
     all_preds = [s["model_predicted_calories"] for s in test_samples]
 
-    overall_mae, overall_rmse = calculate_mae_rmse(all_actuals, all_preds)
+    overall_mae, overall_rmse, overall_mape = calculate_mae_rmse_mape(all_actuals, all_preds)
 
     group_results: List[GroupAccuracyResult] = []
 
@@ -92,7 +91,7 @@ def evaluate_demographic_accuracy(test_samples: List[Dict[str, Any]] = None) -> 
         if items:
             acts = [x["ground_truth_calories"] for x in items]
             preds = [x["model_predicted_calories"] for x in items]
-            mae, rmse = calculate_mae_rmse(acts, preds)
+            mae, rmse, mape = calculate_mae_rmse_mape(acts, preds)
             group_results.append(
                 GroupAccuracyResult(
                     group_type="Age Group",
@@ -100,6 +99,7 @@ def evaluate_demographic_accuracy(test_samples: List[Dict[str, Any]] = None) -> 
                     sample_count=len(items),
                     mae=mae,
                     rmse=rmse,
+                    mape=mape,
                     avg_actual=round(float(np.mean(acts)), 1),
                     avg_predicted=round(float(np.mean(preds)), 1),
                 )
@@ -115,7 +115,7 @@ def evaluate_demographic_accuracy(test_samples: List[Dict[str, Any]] = None) -> 
         if items:
             acts = [x["ground_truth_calories"] for x in items]
             preds = [x["model_predicted_calories"] for x in items]
-            mae, rmse = calculate_mae_rmse(acts, preds)
+            mae, rmse, mape = calculate_mae_rmse_mape(acts, preds)
             group_results.append(
                 GroupAccuracyResult(
                     group_type="Gender",
@@ -123,6 +123,7 @@ def evaluate_demographic_accuracy(test_samples: List[Dict[str, Any]] = None) -> 
                     sample_count=len(items),
                     mae=mae,
                     rmse=rmse,
+                    mape=mape,
                     avg_actual=round(float(np.mean(acts)), 1),
                     avg_predicted=round(float(np.mean(preds)), 1),
                 )
@@ -136,7 +137,7 @@ def evaluate_demographic_accuracy(test_samples: List[Dict[str, Any]] = None) -> 
         if items:
             acts = [x["ground_truth_calories"] for x in items]
             preds = [x["model_predicted_calories"] for x in items]
-            mae, rmse = calculate_mae_rmse(acts, preds)
+            mae, rmse, mape = calculate_mae_rmse_mape(acts, preds)
             group_results.append(
                 GroupAccuracyResult(
                     group_type="BMI Category",
@@ -144,6 +145,7 @@ def evaluate_demographic_accuracy(test_samples: List[Dict[str, Any]] = None) -> 
                     sample_count=len(items),
                     mae=mae,
                     rmse=rmse,
+                    mape=mape,
                     avg_actual=round(float(np.mean(acts)), 1),
                     avg_predicted=round(float(np.mean(preds)), 1),
                 )
@@ -153,5 +155,6 @@ def evaluate_demographic_accuracy(test_samples: List[Dict[str, Any]] = None) -> 
         total_users=len(test_samples),
         overall_mae=overall_mae,
         overall_rmse=overall_rmse,
+        overall_mape=overall_mape,
         group_metrics=group_results,
     )

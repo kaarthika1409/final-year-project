@@ -14,10 +14,11 @@ from backend.app.security import get_current_user
 from backend.app.ml_service import predict_food_from_image, fuzzy_match_nutrition_db
 from backend.app.routers.targets import get_or_create_daily_target, format_target_response
 
-router = APIRouter(prefix="/api/meals", tags=["Meal Logging"])
+router = APIRouter(tags=["Meal Logging"])
 
 
-@router.get("/search")
+@router.get("/api/meals/search")
+@router.get("/meals/search")
 def search_nutrition_database(q: str, db: Session = Depends(get_db)):
     if not q or len(q.strip()) == 0:
         return db.query(NutritionReference).limit(20).all()
@@ -39,7 +40,8 @@ def search_nutrition_database(q: str, db: Session = Depends(get_db)):
     return results
 
 
-@router.post("/manual", response_model=dict)
+@router.post("/api/meals/manual", response_model=dict)
+@router.post("/meals/manual", response_model=dict)
 def log_meal_manual(
     meal_in: MealLogCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
@@ -68,9 +70,9 @@ def log_meal_manual(
         meal_slot=meal_in.meal_slot.lower(),
         food_name=food_name,
         calories=calories,
-        protein=protein,
-        carbs=carbs,
-        fat=fat,
+        protein_g=protein,
+        carbs_g=carbs,
+        fat_g=fat,
         quantity_g=meal_in.quantity_g,
         source=meal_in.source,
         image_url=meal_in.image_url,
@@ -89,7 +91,8 @@ def log_meal_manual(
     }
 
 
-@router.post("/photo", response_model=PhotoDetectResponse)
+@router.post("/api/meals/photo", response_model=PhotoDetectResponse)
+@router.post("/meals/photo", response_model=PhotoDetectResponse)
 async def detect_food_from_photo(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -107,6 +110,7 @@ async def detect_food_from_photo(
     return PhotoDetectResponse(
         detected_food=detection["detected_food"],
         confidence=detection["confidence"],
+        uncertain=detection.get("uncertain", False),
         portion_g=detection["portion_g"],
         calories=detection["calories"],
         protein=detection["protein"],
@@ -116,6 +120,8 @@ async def detect_food_from_photo(
     )
 
 
+@router.get("/api/meals/logs", response_model=List[MealLogResponse])
+@router.get("/meals/logs", response_model=List[MealLogResponse])
 @router.get("/logs", response_model=List[MealLogResponse])
 def get_today_meal_logs(
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
@@ -137,6 +143,8 @@ def get_today_meal_logs(
     return [MealLogResponse.model_validate(l) for l in logs]
 
 
+@router.delete("/api/meals/logs/{log_id}", response_model=dict)
+@router.delete("/meals/logs/{log_id}", response_model=dict)
 @router.delete("/logs/{log_id}", response_model=dict)
 def delete_meal_log(
     log_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)

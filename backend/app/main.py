@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.app.database import engine, Base, SessionLocal
 from backend.app.seed_data import seed_nutrition_database
 from backend.app.routers import auth, meals, targets, recommendations, analytics
+from backend.app.routers import predict as predict_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("nutrition_app")
@@ -55,6 +56,7 @@ app.include_router(meals.router)
 app.include_router(targets.router)
 app.include_router(recommendations.router)
 app.include_router(analytics.router)
+app.include_router(predict_router.router)
 
 
 @app.get("/")
